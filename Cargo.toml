@@ -1,0 +1,24 @@
+[workspace]
+members = ["mnemo-gateway", "mnemo-core", "mnemo-memory"]
+resolver = "2"
+
+[package]
+name = "mnemo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mnemo-gateway = { path = "mnemo-gateway" }
+mnemo-core = { path = "mnemo-core" }
+mnemo-memory = { path = "mnemo-memory" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+anyhow = "1"
+async-trait = "0.1"
+chrono = "0.4"
+dirs = "6"
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+clap = { version = "4", features = ["derive"] }
