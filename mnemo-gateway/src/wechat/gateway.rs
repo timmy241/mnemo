@@ -214,9 +214,14 @@ impl Gateway for WechatGateway {
     }
 
     async fn send(&self, message: OutgoingMessage) -> Result<(), GatewayError> {
+        let context_token = message
+            .context
+            .get("context_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let client = self.client.lock().await;
         client
-            .send_message(&message.session_id, &message.content, "")
+            .send_message(&message.session_id, &message.content, context_token)
             .await
     }
 

@@ -15,3 +15,4 @@ reqwest = { version = "0.12", features = ["json"] }
 rand = "0.9"
 base64 = "0.22"
 chrono = "0.4"
+botrs = "0.2"

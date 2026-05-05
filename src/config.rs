@@ -4,17 +4,41 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use mnemo_gateway::wechat::types::TokenSession;
+use mnemo_gateway::qq::types::QQChannelConfig;
+use mnemo_gateway::TokenSession;
 
 const CONFIG_DIR: &str = ".mnemo";
 const CONFIG_FILE: &str = "config.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
+    /// Legacy field — kept for backward compatibility.
     #[serde(default)]
     pub wechat_token: Option<TokenSession>,
     #[serde(default)]
+    pub channels: Vec<ChannelConfig>,
+    #[serde(default)]
     pub model: Option<ModelConfig>,
+    #[serde(default)]
+    pub pg: Option<PgConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ChannelConfig {
+    #[serde(rename = "wechat")]
+    Wechat { token: TokenSession },
+    #[serde(rename = "qq")]
+    QQ(QQChannelConfig),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgConfig {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub password: String,
+    pub database: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,8 +61,17 @@ impl AppConfig {
             return Ok(Self::default());
         }
         let data = fs::read_to_string(&path)?;
-        let config: AppConfig = serde_json::from_str(&data)?;
+        let mut config: AppConfig = serde_json::from_str(&data)?;
         info!(path = %path.display(), "config loaded");
+
+        // Migrate legacy wechat_token into channels
+        if config.channels.is_empty() {
+            if let Some(token) = config.wechat_token.take() {
+                info!("migrating wechat_token to channels");
+                config.channels.push(ChannelConfig::Wechat { token });
+            }
+        }
+
         Ok(config)
     }
 

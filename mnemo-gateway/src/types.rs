@@ -16,4 +16,7 @@ pub struct IncomingMessage {
 pub struct OutgoingMessage {
     pub session_id: String,
     pub content: String,
+    /// Platform-specific context for replying (e.g. WeChat context_token, QQ msg_id).
+    #[serde(default)]
+    pub context: serde_json::Value,
 }

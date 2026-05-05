@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use tracing::info;
 
-use crate::config::{AppConfig, ModelConfig};
+use crate::config::{AppConfig, ChannelConfig, ModelConfig, PgConfig};
 use mnemo_gateway::WechatGateway;
 
 pub async fn run() -> anyhow::Result<()> {
@@ -49,18 +49,105 @@ pub async fn run() -> anyhow::Result<()> {
         select_model,
     });
 
-    // ── Step 2: WeChat login ───────────────────────────────────────────────
-    println!("\n=== 微信登录 ===\n");
-    println!("接下来需要扫码登录微信，登录成功后 token 会自动保存。\n");
+    // ── Step 2: Channel selection ──────────────────────────────────────────
+    let has_wechat = config.channels.iter().any(|c| matches!(c, ChannelConfig::Wechat { .. }));
+    let has_qq = config.channels.iter().any(|c| matches!(c, ChannelConfig::QQ(_)));
 
-    let gateway = WechatGateway::new(None);
-    let session = gateway.login().await?;
-    config.wechat_token = Some(session);
+    let wechat_mark = if has_wechat { " ●" } else { "" };
+    let qq_mark = if has_qq { " ●" } else { "" };
+
+    println!("\n=== 消息通道 ===\n");
+    println!("请选择要配置的消息通道：");
+    println!("  1. 微信 (WeChat){}", wechat_mark);
+    println!("  2. QQ{}", qq_mark);
+    println!("  3. 跳过");
+    println!();
+
+    let choice = prompt("选择通道", None, "1");
+    match choice.as_str() {
+        "1" => setup_wechat(&mut config).await?,
+        "2" => setup_qq(&mut config).await?,
+        "3" => println!("跳过通道配置。\n"),
+        _ => println!("未知选项，跳过通道配置。\n"),
+    }
+
+    // ── Step 3: PostgreSQL config ──────────────────────────────────────────
+    println!("\n=== PostgreSQL 配置 ===\n");
+    println!("用于存储对话记忆，直接回车跳过（不启用记忆功能）。\n");
+
+    let pg_host = prompt(
+        "Host",
+        config.pg.as_ref().map(|p| p.host.as_str()),
+        "localhost",
+    );
+    let pg_port_str = prompt(
+        "Port",
+        config.pg.as_ref().map(|p| p.port.to_string()).as_deref(),
+        "5432",
+    );
+    let pg_user = prompt(
+        "User",
+        config.pg.as_ref().map(|p| p.user.as_str()),
+        "postgres",
+    );
+    let pg_password = prompt(
+        "Password",
+        config.pg.as_ref().map(|p| p.password.as_str()),
+        "",
+    );
+    let pg_database = prompt(
+        "Database",
+        config.pg.as_ref().map(|p| p.database.as_str()),
+        "mnemo",
+    );
+
+    if !pg_password.is_empty() {
+        let port: u16 = pg_port_str.parse().unwrap_or(5432);
+        config.pg = Some(PgConfig {
+            host: pg_host,
+            port,
+            user: pg_user,
+            password: pg_password,
+            database: pg_database,
+        });
+    } else {
+        println!("跳过 PostgreSQL 配置。\n");
+    }
 
     // ── Save ───────────────────────────────────────────────────────────────
     config.save()?;
     println!("\n✅ 配置已保存到 ~/.mnemo/config.json\n");
     info!("setup complete");
+
+    Ok(())
+}
+
+async fn setup_wechat(config: &mut AppConfig) -> anyhow::Result<()> {
+    println!("\n=== 微信登录 ===\n");
+    println!("接下来需要扫码登录微信，登录成功后 token 会自动保存。\n");
+
+    let gateway = WechatGateway::new(None);
+    let session = gateway.login().await?;
+
+    // Remove existing wechat channel if any
+    config.channels.retain(|c| !matches!(c, ChannelConfig::Wechat { .. }));
+    config.channels.push(ChannelConfig::Wechat { token: session });
+
+    Ok(())
+}
+
+async fn setup_qq(config: &mut AppConfig) -> anyhow::Result<()> {
+    println!("\n=== QQ Bot 配置 ===\n");
+    println!("请在 QQ 开放平台 (https://q.qq.com) 创建机器人，获取 AppID 和 Secret。\n");
+
+    let app_id = prompt("AppID", None, "");
+    let secret = prompt("Secret", None, "");
+
+    // Remove existing qq channel if any
+    config.channels.retain(|c| !matches!(c, ChannelConfig::QQ(_)));
+    config.channels.push(ChannelConfig::QQ(
+        mnemo_gateway::qq::types::QQChannelConfig { app_id, secret },
+    ));
 
     Ok(())
 }
